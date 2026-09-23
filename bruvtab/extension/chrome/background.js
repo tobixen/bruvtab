@@ -445,6 +445,34 @@ var browserTabs = undefined;
 const NATIVE_APP_NAME = 'bruvtab_mediator';
 reconnect();
 
+// When each tab last started or stopped playing sound, so that the
+// audibleWithin query key can find tabs that only made a short sound.  Kept
+// in memory only: history from before an extension, browser or background
+// script restart is lost.
+const lastAudible = new Map();
+trackAudibleTabs();
+
+function trackAudibleTabs() {
+  const tabsApi = (typeof browser !== 'undefined' ? browser : chrome).tabs;
+  tabsApi.onUpdated.addListener((tabId, changeInfo) => {
+    if (changeInfo.hasOwnProperty('audible')) {
+      lastAudible.set(tabId, Date.now());
+    }
+  });
+  tabsApi.onRemoved.addListener(tabId => lastAudible.delete(tabId));
+  tabsApi.onReplaced.addListener((addedTabId, removedTabId) => {
+    if (lastAudible.has(removedTabId)) {
+      lastAudible.set(addedTabId, lastAudible.get(removedTabId));
+      lastAudible.delete(removedTabId);
+    }
+  });
+}
+
+function wasAudibleWithin(tab, seconds) {
+  const last = lastAudible.get(tab.id);
+  return tab.audible || (last !== undefined && Date.now() - last <= seconds * 1000);
+}
+
 // In MV3, the service worker can be suspended when idle.
 // Use an alarm to periodically wake it and re-establish the native connection
 // without sending unsolicited messages to the native app.
@@ -587,7 +615,13 @@ function queryTabs(query_info) {
       return o;
     }, {})
 
-    browserTabs.query(query, queryTabsOnSuccess);
+    let onSuccess = queryTabsOnSuccess;
+    if (query.hasOwnProperty('audibleWithin')) {
+      const seconds = Number(query.audibleWithin);
+      delete query.audibleWithin;
+      onSuccess = tabs => queryTabsOnSuccess(tabs.filter(tab => wasAudibleWithin(tab, seconds)));
+    }
+    browserTabs.query(query, onSuccess);
   }
   catch(error) {
     queryTabsOnFailure(error);

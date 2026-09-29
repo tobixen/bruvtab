@@ -2,6 +2,10 @@ Unreleased
 
 * Add `bruvtab close --playing` and `bruvtab close --muted` to close all audible or muted tabs
 * Add `bruvtab list --played-within SECONDS` and `bruvtab close --played-within SECONDS` for tabs that played sound recently
+* Fix `bruvtab query` printing nothing for any filter, and `bruvtab update` with property flags crashing
+* Add `bruvtab query --close` to close the tabs a query matches
+* Fix `bruvtab update -info` crashing
+* Fix `bruvtab close` with several browsers connected closing tabs in the wrong browser
 
 2.0.14 (2026-06-03)
 

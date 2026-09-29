@@ -10,6 +10,7 @@ from uuid import uuid4
 from rich.console import Console
 from rich.json import JSON
 
+from bruvtab.api import MultipleMediatorsAPI
 from bruvtab.api import SingleMediatorAPI
 from bruvtab.env import http_iface
 from bruvtab.env import min_http_port
@@ -292,6 +293,125 @@ class TestActivate(WithMediator):
         ]
         print_error.assert_called_once_with('No currently playing tabs found')
         assert result == 1
+
+
+class TestQueryUpdate(WithMediator):
+    def test_query_sends_only_query_keys(self):
+        self.mediator.transport.received_extend([
+            'mocked',
+            ['1.2\tTicket\thttps://ticket.example.com/'],
+        ])
+
+        with patch('sys.stdout', new_callable=StringIO) as stdout:
+            self._run_commands(['--no-wrap', 'query', '--debug', '-url', 'https://ticket.example.com/*', '+pinned'])
+
+        self._assert_init()
+        assert self.mediator.transport.sent == [
+            {'name': 'query_tabs',
+             'query_info': encode_query('{"pinned": true, "url": ["https://ticket.example.com/*"]}')},
+        ]
+        assert stdout.getvalue() == 'a.1.2\tTicket\thttps://ticket.example.com/\n'
+
+    def test_update_sends_only_update_keys(self):
+        self.mediator.transport.received_extend([
+            'mocked',
+            [],
+        ])
+
+        with patch('bruvtab.main.read_stdin', return_value=''), \
+                patch('bruvtab.main.stdout_buffer_write'):
+            self._run_commands(['--no-wrap', 'update', '--debug', '-tabId', 'a.1.2', '+pinned'])
+
+        self._assert_init()
+        assert self.mediator.transport.sent == [
+            {'name': 'update_tabs', 'updates': [{'tab_id': 2, 'properties': {'pinned': True}}]},
+        ]
+
+    def test_query_close_closes_matching_tabs(self):
+        self.mediator.transport.received_extend([
+            'mocked',
+            ['1.2\tTicket\thttps://ticket.example.com/', '1.3\tOther ticket\thttps://ticket.example.com/2'],
+            'OK',
+        ])
+
+        with patch('sys.stdout', new_callable=StringIO) as stdout:
+            result = self._run_commands(['query', '-url', 'https://ticket.example.com/*', '--close'])
+
+        self._assert_init()
+        assert self.mediator.transport.sent == [
+            {'name': 'query_tabs', 'query_info': encode_query('{"url": ["https://ticket.example.com/*"]}')},
+            {'name': 'close_tabs', 'tab_ids': [2, 3]},
+        ]
+        assert stdout.getvalue() == ('a.1.2\tTicket\thttps://ticket.example.com/\n'
+                                     'a.1.3\tOther ticket\thttps://ticket.example.com/2\n')
+        assert not result
+
+    def test_query_close_reports_no_match(self):
+        self.mediator.transport.received_extend([
+            'mocked',
+            [],
+        ])
+
+        with patch('bruvtab.main.print_error') as print_error:
+            result = self._run_commands(['query', '+pinned', '--close'])
+
+        self._assert_init()
+        assert self.mediator.transport.sent == [
+            {'name': 'query_tabs', 'query_info': encode_query('{"pinned": true}')},
+        ]
+        print_error.assert_called_once_with('No matching tabs found')
+        assert result == 1
+
+    def test_update_info_sends_parsed_json(self):
+        self.mediator.transport.received_extend([
+            'mocked',
+            [],
+        ])
+
+        with patch('bruvtab.main.read_stdin', return_value=''), \
+                patch('bruvtab.main.stdout_buffer_write'):
+            self._run_commands(['update', '-info',
+                                '[{"tab_id": "a.1.2", "properties": {"pinned": true}}]'])
+
+        self._assert_init()
+        assert self.mediator.transport.sent == [
+            {'name': 'update_tabs', 'updates': [{'tab_id': 2, 'properties': {'pinned': True}}]},
+        ]
+
+
+class RecordingHttpClient:
+    def __init__(self):
+        self.paths = []
+
+    def get(self, path, data=None):
+        self.paths.append(path)
+        return '1' if path == '/get_pid' else ''
+
+
+class TestCloseTabsPerClient(TestCase):
+    def test_close_sends_each_tab_only_to_its_client(self):
+        clients = {prefix: RecordingHttpClient() for prefix in 'ab'}
+        api = MultipleMediatorsAPI([SingleMediatorAPI(prefix, client=client)
+                                    for prefix, client in clients.items()])
+        for client in clients.values():
+            client.paths.clear()
+
+        api.close_tabs(['a.1.2', 'b.5.7', 'a.1.3'])
+
+        assert clients['a'].paths == ['/close_tabs/2,3']
+        assert clients['b'].paths == ['/close_tabs/7']
+
+    def test_close_skips_clients_without_matching_tabs(self):
+        clients = {prefix: RecordingHttpClient() for prefix in 'ab'}
+        api = MultipleMediatorsAPI([SingleMediatorAPI(prefix, client=client)
+                                    for prefix, client in clients.items()])
+        for client in clients.values():
+            client.paths.clear()
+
+        api.close_tabs(['a.1.2'])
+
+        assert clients['a'].paths == ['/close_tabs/2']
+        assert clients['b'].paths == []
 
 
 class TestMediaControls(WithMediator):

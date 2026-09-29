@@ -2,6 +2,7 @@ Unreleased
 
 * Fix `bruvtab query` printing nothing for any filter, and `bruvtab update` with property flags crashing
 * Add `bruvtab query --close` to close the tabs a query matches
+* Fix `bruvtab update -info` crashing
 
 2.0.7 (2026-05-05)
 

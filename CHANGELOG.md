@@ -1,3 +1,7 @@
+Unreleased
+
+* Add `bruvtab list --played-within SECONDS` and `bruvtab close --played-within SECONDS` for tabs that played sound recently
+
 2.0.7 (2026-05-05)
 
 * Fix native messaging timeout handling with buffered browser messages

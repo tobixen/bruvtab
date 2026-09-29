@@ -1,3 +1,7 @@
+Unreleased
+
+* Add `bruvtab list --played-within SECONDS` and `bruvtab close --played-within SECONDS` for tabs that played sound recently
+
 2.0.15 (2026-10-17)
 
 * Add `bruvtab close --playing` and `bruvtab close --muted` to close all audible or muted tabs

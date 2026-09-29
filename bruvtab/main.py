@@ -661,9 +661,16 @@ def query_tabs(args):
         queryInfo = d['info']
     else:
         queryInfo = command_specific_args(args)
+        queryInfo.pop('close')
     api = MultipleMediatorsAPI(create_clients_from_args(args))
-    for tab in api.query_tabs(queryInfo):
+    tabs = api.query_tabs(queryInfo)
+    for tab in tabs:
         print(tab)
+    if args.close:
+        if not tabs:
+            print_error('No matching tabs found')
+            return 1
+        api.close_tabs([tab_id_from_line(tab) for tab in tabs])
 
 
 def index_tabs(args):
@@ -1294,6 +1301,8 @@ def build_parser():
                                    help='the type of window the tabs are in.')
     parser_query_tabs.add_argument('-index', type=int,
                                    help='the position of the tabs within their windows.')
+    parser_query_tabs.add_argument('--close', action='store_true', default=False,
+                                   help='close the matching tabs; run without it first to see which tabs match')
     parser_query_tabs.add_argument('-info', type=str,
                                    help='the queryInfo parameter as outlined here: https://developer.chrome.com/extensions/tabs#method-query. '
                                         'All other query arguments are ignored if this argument is present.')

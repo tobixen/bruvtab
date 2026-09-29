@@ -326,6 +326,41 @@ class TestQueryUpdate(WithMediator):
             {'name': 'update_tabs', 'updates': [{'tab_id': 2, 'properties': {'pinned': True}}]},
         ]
 
+    def test_query_close_closes_matching_tabs(self):
+        self.mediator.transport.received_extend([
+            'mocked',
+            ['1.2\tTicket\thttps://ticket.example.com/', '1.3\tOther ticket\thttps://ticket.example.com/2'],
+            'OK',
+        ])
+
+        with patch('sys.stdout', new_callable=StringIO) as stdout:
+            result = self._run_commands(['query', '-url', 'https://ticket.example.com/*', '--close'])
+
+        self._assert_init()
+        assert self.mediator.transport.sent == [
+            {'name': 'query_tabs', 'query_info': encode_query('{"url": ["https://ticket.example.com/*"]}')},
+            {'name': 'close_tabs', 'tab_ids': [2, 3]},
+        ]
+        assert stdout.getvalue() == ('a.1.2\tTicket\thttps://ticket.example.com/\n'
+                                     'a.1.3\tOther ticket\thttps://ticket.example.com/2\n')
+        assert not result
+
+    def test_query_close_reports_no_match(self):
+        self.mediator.transport.received_extend([
+            'mocked',
+            [],
+        ])
+
+        with patch('bruvtab.main.print_error') as print_error:
+            result = self._run_commands(['query', '+pinned', '--close'])
+
+        self._assert_init()
+        assert self.mediator.transport.sent == [
+            {'name': 'query_tabs', 'query_info': encode_query('{"pinned": true}')},
+        ]
+        print_error.assert_called_once_with('No matching tabs found')
+        assert result == 1
+
 
 class TestMediaControls(WithMediator):
     def test_pause_targets_explicit_tab(self):

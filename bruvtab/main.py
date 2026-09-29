@@ -55,7 +55,7 @@ import sys
 import time
 import argcomplete
 from base64 import b64decode
-from argparse import ArgumentParser, SUPPRESS
+from argparse import ArgumentParser, ArgumentTypeError, SUPPRESS
 from importlib import resources
 from functools import partial
 from itertools import groupby
@@ -270,6 +270,17 @@ def get_query_tab_ids(api, query):
 
 def get_playing_tab_ids(api):
     return get_query_tab_ids(api, {'audible': True})
+
+
+def get_played_within_tab_ids(api, seconds):
+    return get_query_tab_ids(api, {'audibleWithin': seconds})
+
+
+def non_negative_seconds(value):
+    seconds = int(value)
+    if seconds < 0:
+        raise ArgumentTypeError('must be 0 or more, got %s' % value)
+    return seconds
 
 
 def get_muted_tab_ids(api):
@@ -529,6 +540,9 @@ def list_tabs(args):
         tabs = [tab for tab in tabs if tab_id_from_line(tab) in playing_ids]
     if args.muted:
         tabs = [tab for tab in tabs if tab_id_from_line(tab) in muted_ids]
+    if args.played_within is not None:
+        played_ids = get_played_within_tab_ids(api, args.played_within)
+        tabs = [tab for tab in tabs if tab_id_from_line(tab) in played_ids]
     if args.json:
         tabs_json = [
             {
@@ -570,6 +584,11 @@ def close_tabs(args):
         tab_ids = list(get_muted_tab_ids(api))
         if not tab_ids:
             print_error('No muted tabs found')
+            return 1
+    elif getattr(args, 'played_within', None) is not None:
+        tab_ids = list(get_played_within_tab_ids(api, args.played_within))
+        if not tab_ids:
+            print_error('No tabs played sound within %d seconds' % args.played_within)
             return 1
     else:
         tab_ids = args.tab_ids
@@ -1145,6 +1164,10 @@ def build_parser():
                                   help='Only list tabs that are currently audible')
     parser_list_tabs.add_argument('--muted', action='store_true', default=False,
                                   help='Only list tabs that are muted')
+    parser_list_tabs.add_argument('--played-within', type=non_negative_seconds, default=None,
+                                  metavar='SECONDS',
+                                  help='Only list tabs that are audible now or stopped playing sound within the last '
+                                       'SECONDS (needs the matching browser extension)')
 
     parser_close_tabs = subparsers.add_parser(
         'close',
@@ -1158,6 +1181,10 @@ def build_parser():
                                    help='Close all currently audible tabs')
     parser_close_tabs.add_argument('--muted', action='store_true', default=False,
                                    help='Close all muted tabs')
+    parser_close_tabs.add_argument('--played-within', type=non_negative_seconds, default=None,
+                                   metavar='SECONDS',
+                                   help='Close all tabs that are audible now or stopped playing sound '
+                                        'within the last SECONDS (needs the matching browser extension)')
 
     parser_activate_tab = subparsers.add_parser(
         'activate',

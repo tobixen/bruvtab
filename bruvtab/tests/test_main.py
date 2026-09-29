@@ -789,6 +789,44 @@ class TestList(WithMediator):
         ]
         assert output[-1:] == [b'a.1.2\tExample\thttps://example.com\n']
 
+    def test_tabs_played_within_filters_plain_tsv(self):
+        self.mediator.transport.received_extend([
+            'mocked',
+            [
+                '1.1\tGoogle Search\thttps://google.com/search',
+                '1.2\tExample\thttps://example.com',
+            ],
+            ['1.2\tExample\thttps://example.com'],
+        ])
+
+        output = []
+        with patch('bruvtab.main.sys.stdout.buffer.write', output.append):
+            self._run_commands(['tabs', '--played-within', '60'])
+        self._assert_init()
+        assert self.mediator.transport.sent == [
+            {'name': 'list_tabs'},
+            {'name': 'query_tabs', 'query_info': encode_query('{"audibleWithin": 60}')},
+        ]
+        assert output[-1:] == [b'a.1.2\tExample\thttps://example.com\n']
+
+    def test_tabs_played_within_rejects_negative_seconds(self):
+        with self.assertRaises(SystemExit):
+            self._run_commands(['tabs', '--played-within', '-5'])
+
+    def test_close_played_within_closes_recently_audible_tabs(self):
+        self.mediator.transport.received_extend([
+            'mocked',
+            ['1.2\tExample\thttps://example.com'],
+            'OK',
+        ])
+
+        self._run_commands(['close', '--played-within', '60'])
+        self._assert_init()
+        assert self.mediator.transport.sent == [
+            {'name': 'query_tabs', 'query_info': encode_query('{"audibleWithin": 60}')},
+            {'name': 'close_tabs', 'tab_ids': [2]},
+        ]
+
     def test_tabs_muted_filters_plain_tsv(self):
         self.mediator.transport.received_extend([
             'mocked',
